@@ -1,0 +1,312 @@
+---
+title: "PHP2516_Rankins_Destiny_HW2_Spring_2023"
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-03-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(fig.height = 4)
+knitr::opts_chunk$set(fig.width = 6)
+knitr::opts_chunk$set(fig.align="center")
+`%notin%` <- Negate(`%in%`)
+library(kableExtra)
+```
+
+```{r}
+library(tidyr) #Allows for us to manipulate the data structure
+library(data.table) #Allows for us to manipulate the data structure
+library(lme4)
+library(geepack)
+library(tidyverse)
+library(nlme)
+library(haven)
+```
+
+
+```{r}
+#load the data set
+calcium <- read_dta("C:/Users/desti/Downloads/calcium_allL.dta")
+
+#view first 5 rows of the data
+head(calcium,n=5)
+
+cal_wider <- calcium %>% pivot_wider(id_cols = c(person, group), 
+                        names_from = visit, values_from = c(bmd,age))
+```
+
+a) Describe the missing patterns you see in the data (if any).
+
+When applying the “md.pattern” function, we can observe a monotone missing data pattern. In the first column we observe the number of cases, the middle columns indicate whether a particular variable is missing for the pattern (red=missing), the last column counts the number of values missing in the pattern, the final row counts the number of missing values for each variable. In the first row,  we observe 91 cases with 0 missing values missing for the pattern. In the second row, we observe 3 cases with 1  missing value for the pattern. Here, there are 21 missing values for the bmd_5. In the third row, we observe 5 cases with 2 missing values for the pattern. Here, there are 18 missing values for the variable bmd_4. In the fourth row, we observe 6 cases with 3 values missing for the pattern. Here, there are 13 missing values for the variable bmd_.  In the fifth row, we observe 7 cases with 4 missing values for the pattern. Here, there are 7 missing values for the variable bmd_2. This occurrence could be prevalent because these individuals could have dropped out of the study.
+```{r}
+library(mice)
+cal_wider <- calcium %>% pivot_wider(id_cols = c(person, group), 
+                        names_from = visit, values_from = c(bmd,age))
+md.pattern(cal_wider[,c(1:7)])
+cal_wider
+```
+
+b) Plot the observed data (means and spaghetti plots). What do you observe?
+```{r}
+#average bone mineral density by visit
+mean_visits <- calcium %>%
+  group_by(group,visit) %>%
+  summarise(mean_bmd = mean(bmd))
+mean_visits
+
+mean_overall <- calcium %>%
+  group_by(visit) %>%
+  summarise(mean_bonemd = mean(bmd))
+mean_overall
+
+#Line plots of bmd measurements over time by group
+ggplot() + 
+  geom_line(data = calcium,aes(x=visit,y = bmd, group = person, col = group)) +
+  geom_line(data = mean_visits,aes(x=visit,y = mean_bmd)) +
+ facet_wrap(.~group) +
+  scale_color_brewer(palette="Dark2")+
+  theme(axis.line = element_line(colour = "black",linewidth=2),
+text = element_text(size=15),
+axis.text = element_text(colour = "black",size = 15,face="bold"),
+axis.title = element_text(size = 15,face="bold"),
+axis.ticks.length=unit(.25, "cm"),
+axis.ticks = element_line(colour = "black", linewidth = 1.5))+
+   ylab(~ paste(" Bone Mineral Density (in g/cm^2)")) +
+  xlab("Visit") +
+labs(title = "Bone Mineral Density Level Trajectories \n by Treatment Group with Means")
+
+#Line plot of individual bmd measurements over time
+ggplot() + 
+  geom_line(data = calcium,aes(x=visit,y = bmd, group = person)) +
+  geom_line(data = mean_overall,aes(x=visit,y = mean_bonemd, col = "red")) +
+theme(axis.line = element_line(colour = "black",linewidth=2),
+text = element_text(size=15),
+axis.text = element_text(colour = "black",size = 15,face="bold"),
+axis.title = element_text(size = 15,face="bold"),
+axis.ticks.length=unit(.25, "cm"),
+axis.ticks = element_line(colour = "black", linewidth = 1.5))+
+ylab(~ paste(" Bone Mineral Density (in g/cm^2)")) +
+xlab("Visit") +
+labs(title = "Overall Bone Mineral Density Level Trajectory \n with Overall Mean")
+
+#line plot of mean bone mineral density levels by visit
+ggplot()+
+  geom_line(data = mean_visits, aes(x = visit, y = mean_bmd, color = group))+
+  geom_line(data = mean_overall, aes(x = visit, y = mean_bonemd, col = "T"))+
+  geom_point()+
+  #facet_grid(. ~group)+
+  scale_color_brewer(palette="Dark2")+
+  theme(axis.line = element_line(colour = "black",linewidth=2),
+text = element_text(size=15),
+axis.text = element_text(colour = "black",size = 15,face="bold"),
+axis.title = element_text(size = 15,face="bold"),
+axis.ticks.length=unit(.25, "cm"),
+axis.ticks = element_line(colour = "black", linewidth = 1.5))+
+ylab(~ paste(" Mean Bone Mineral Density( ",mu,"g/cm^2 )"))+
+labs(title = "Average Bone Mineral Density by Group")+
+xlab("Visit")
+
+
+#distribution of bone mineral density levels
+bmd_box_plot <- ggplot(calcium, aes(x= as.factor(visit), y= bmd, fill=group))+
+geom_boxplot(outlier.colour = "black")+
+facet_wrap(.~group)+
+scale_color_brewer(palette="Dark2")+
+theme(axis.line = element_line(colour = "black",linewidth=2),
+text = element_text(size=15),
+axis.text = element_text(colour = "black",size = 15,face="bold"),
+axis.title = element_text(size = 15,face="bold"),
+axis.ticks.length=unit(.25, "cm"),
+axis.ticks = element_line(colour = "black", linewidth = 1.5))+
+ylab(" Bone Mineral Density (g/cm^2)")+
+labs(title = "Distribution of Bone Mineral Density by Group")+
+xlab("Visit")
+bmd_box_plot
+
+```
+
+c) Conduct a Mean Response Profiles analysis (Model 1) with only time and treatment group. What is your overall conclusion about the changes in the mean response over time and the effect of the treatment group on those changes?
+
+To assess the changes in mean response over time and evaluate the effect of the treatment group on those changes we should fit a model with the main effects of time and treatment. In addition, we should add a treatment and time interaction term. The interaction term tells us whether the outcome over time is the same between the two treatment groups. In the “Model_1” summary , the coefficients for the  interaction term are significant. Therefore, we can say that the mean response over time is not the same for the two treatment groups. 
+```{r}
+#response profile 
+#use gls model!! look at lab 3 for the syntax
+Model_1 <- gls(bmd ~ factor(group) + factor(visit) + factor(group):factor(visit),
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | as.factor(visit)), method = "ML")
+
+summary(Model_1)
+anova(Model_1)
+```
+
+d) Suppose that you are mainly interested in describing the trends in the mean responses over time adjusting for age. Find a model for the mean that best fits your data. [HINT:Consider only up to two-way interactions of treatment with time and age. Start with the ‘full’ model and follow a backward elimination procedure based on the partial p-values of the regression coefficients.]
+
+The “Model_2” includes treatment group and age as an interaction term. This model also includes the treatment and time as an interaction term. In this model, the interaction terms for the treatment group with age and time(linear and quadratic) are insignificant. Therefore, we can remove these terms.
+
+The “Model_3” includes the main effects of age and an interaction term of treatment and time(linear and quadratic). Here, we can remove the interaction term of treatment and quadratic time variable.
+
+The "Model_4" includes the main effects of age and quadratic time variable and the an interaction term for group and visit. Here, we can remove the quadratic variable for time.
+
+The "Model_5" includes the main effect of age and an interaction term for treatment and time.
+This appears to be the best model so, we can stop here.
+```{r}
+#Unstructured covariance models (continuous)
+
+# Baseline full model with all two-way interactions of treatment with time and age
+Model_2 <- gls(bmd ~ group*age + group*visit + group:I(visit^2),
+data=calcium,
+corr=corSymm(form = ~ 1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_2)
+
+# The interaction term with treatment and age is insignificant so we can remove this terms
+Model_3 <- gls(bmd ~ age + group*visit + group:I(visit^2),
+data=calcium,
+corr=corSymm(form = ~ 1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_3)
+
+# The interaction term with treatment and time(quadratic) is insignificant so we remove this term
+Model_4 <- gls(bmd ~ age + group*visit + I(visit^2),
+data=calcium,
+corr=corSymm(form = ~ 1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_4)
+
+# The main effect of time(quadratic) is insignificant so we remove this term
+Model_5 <- gls(bmd ~ age + group*visit,
+data=calcium,
+corr=corSymm(form = ~ 1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_5)
+
+
+# compare model means using the anova() function
+anova(Model_2, Model_3,Model_4,Model_5)
+```
+
+Question 2: [30 points] Start with a simple model assuming only a linear trend over time, the main effect of treatment, no interaction between time and treatment, and no adjustment for other covariates.
+
+
+a) Select the model that best fits the covariance structure of the data between 1) unstructured and 2) exchangeable.
+```{r}
+# Simple unstructured covariance model with the main effect of treatment
+# and time(continuous)
+Model_6 <- gls(bmd ~ group + visit,
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_6)
+
+#Simple exchangeable (constant variances) model with the main effects of treatment
+# and time(continuous)
+Model_10 <- gls(bmd ~ group + visit,
+data=calcium,
+corr=corCompSymm(form = ~ visit | person),
+weights=varIdent(form = ~1), method = "ML")
+summary(Model_10)
+
+# Simple exchangeable (heterogeneous variances) model with the main effects of
+# treatment and time
+Model_13 <- gls(bmd ~ group + visit,
+data=calcium,
+corr=corCompSymm(form= ~ visit | person),
+weights=varIdent(form = ~ 1 | visit), method = "ML")
+summary(Model_13)
+
+anova(Model_6, Model_10, Model_13)
+```
+
+
+b) Then fit the model that best describes the trends in the mean responses over time. 
+```{r}
+# Simple unstructured covariance model with the main effect of treatment
+# and time(continuous)
+Model_6 <- gls(bmd ~ group + visit,
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_6)
+
+# Unstructured covariance model with the main effects of treatment and time and 
+# an interaction term with treatment and time
+Model_7 <- gls(bmd ~ group + visit + group*visit,
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_7)
+
+# Unstructured covariance model with the main effect of treatment
+# time(continuous) and an interaction term of treatment with treatment and age
+Model_8 <- gls(bmd ~ group + visit  + group*visit + group*age,
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_8)
+
+# Unstructured covariance model with the main effect of time(continuous) and an
+# interaction term of treatment with age
+Model_unstruc <- gls(bmd ~ visit + group*age,
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_unstruc)
+
+#Use the anova() function to compare model means
+anova(Model_6, Model_7, Model_8,Model_unstruc)
+```
+
+
+c) Is the final “best” model for your data the same with the one resulted from the process 
+followed in Question 1? Explain. NOTE: In this exercise note how the standard errors and the quantities tightly connected with them (p- values, and CIs) change with the choice of the covariance model. Always remember that the choice of the covariance model may affect the model selection procedure for the mean and vice versa.
+
+```{r}
+
+# the "best" model resulting from the process in Question 1
+Model_5 <- gls(bmd ~ age + group*visit,
+data=calcium,
+corr=corSymm(form = ~ 1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_5)
+
+# Unstructured covariance model with the main effect of time(continuous) and an
+# interaction term of treatment with age
+Model_unstruc <- gls(bmd ~ visit + group*age,
+data=calcium,
+corr=corSymm(form = ~1 | person),
+weights=varIdent(form = ~1 | visit), method = "ML")
+summary(Model_unstruc)
+
+```
+
+Question 3: [30 points] Interpret the regression coefficients from Model 1 and the best model(s) for the mean resulted from Q1.d and Q2. What is your final conclusion about the changes in the response over time between the two treatment groups?
+
+MODEL 1:
+$\beta{visit2}$,$\beta{visit3}$,$\beta{visit4}$, $\beta{visit5}$
+represent the average change in bone mineral density levels (BMD) among the placebo group relative to baseline which in this case is the reference group for each time variable (dichotomous indicator variable).
+
+$\beta{visit2} + \beta{groupP:visit2}, \beta{visit3} + \beta{groupP:visit3}, \beta{visit4} + \beta{groupP:visit4}, \beta{visit5} + \beta{groupP:visit5}$
+represent the average change in bone mineral density levels among the Placebogroup compared to the Calcium group relative to baseline which is the Calcium group in this case for each time variable (dichotomous indicator variable).
+
+For instance, the average change in BMD levels among the Placebo group at visit 2 compared to baseline (calcium group, visit 1) is 0.02 lower ($\beta{visit2} + \beta{groupP:visit2}$ or 0.027 + -0.007) in comparison to the Calcium group at visit 1. Note: references in this interpretation are: the group (Placebo vs Calcium) and the time point (Visit 2 vs baseline Visit 1).
+
+$\beta{groupP:visit1}$, $\beta{groupP:visit2}$, $\beta{groupP:visit3}$, $\beta{groupP:visit4}$, $\beta{groupP:visit5}$
+The group and visit interaction terms represent the average difference in BMDlevels between the treatments groups at the different time points in comparison to baseline which is the Calcium treatment group.In other words, this is the additional contribution of being in a treatment group and visit.
+
+For instance, the average difference in mean BMD levels from baseline (visit 1)to visit 2 was -0.007 ($\beta{groupP:visit1}$) between treatment groups.
+
+Model_5 and "Model_unstr": $E(y_{ij} \mid X_{ij}) = \beta_0 + \beta_1+ \beta_{p}P +  \beta_{visit}T + \beta_{p:visit}P*T$.
+
+$\beta_{p}P$ represents the average change between treatment groups for BMD levels with the Calcium group as the reference and Placebo being compared. For example, for model 2 the average difference in mean bone mineral density between Placebo group at Visit 1 is 0.06 lower than Calcium group at visit 1.
+
+$\beta_{visit}T$ represents the average change between each visit for the Calcium group for BMD levels. For example in model 3 the average difference in each visits within the Calcium group is 0.007 higher at each time.
+
+$\beta_{p:visit}P*T$ is the interaction term that represents the average difference in BMD levels in the Placebo group at different time points in comparison to the reference group which is Calcium. For example at each visit the Placebo group is 0.004 times lower than the Calcium group.
+
+$ \beta_1$ represents the age covariate in which we adjust for since it is the average change of the patients age at each visit for the Calcium group for BMD levels. For example for both models, there is about 0.038 times increase in age for each visit within both treatment groups.
+
+$\beta_0$ represents the intercept which is the baseline treatment group in reference to the calcium group in the first visit (visit 1).For model_2_unstruc the calcium group is 0.445 times higher than the Placebo group at baseline (Visit 1).
